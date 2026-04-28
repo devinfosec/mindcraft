@@ -1,4 +1,4 @@
-import { writeFile, readFile, mkdirSync } from 'fs';
+import { writeFile, readFileSync, mkdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { makeCompartment, lockdown } from './library/lockdown.js';
@@ -14,17 +14,9 @@ export class Coder {
         this.agent = agent;
         this.file_counter = 0;
         this.fp = '/bots/'+agent.name+'/action-code/';
-        this.code_template = '';
-        this.code_lint_template = '';
-
-        readFile(path.join(__dirname, '../../bots/execTemplate.js'), 'utf8', (err, data) => {
-            if (err) throw err;
-            this.code_template = data;
-        });
-        readFile(path.join(__dirname, '../../bots/lintTemplate.js'), 'utf8', (err, data) => {
-            if (err) throw err;
-            this.code_lint_template = data;
-        });
+        // Templates must be available before generateCode() runs; load synchronously.
+        this.code_template = readFileSync(path.join(__dirname, '../../bots/execTemplate.js'), 'utf8');
+        this.code_lint_template = readFileSync(path.join(__dirname, '../../bots/lintTemplate.js'), 'utf8');
         mkdirSync('.' + this.fp, { recursive: true });
     }
 

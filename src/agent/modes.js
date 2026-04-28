@@ -3,6 +3,24 @@ import * as world from './library/world.js';
 import * as mc from '../utils/mcdata.js';
 import settings from './settings.js'
 import convoManager from './conversation.js';
+import { serverProxy } from './mindserver_proxy.js';
+
+// Throttle so each new threat type only broadcasts once per cooldown window.
+const _threatBroadcast = { lastSent: 0, lastMob: null };
+function maybeBroadcastThreat(enemy) {
+    const now = Date.now();
+    const cooldownMs = 15000;
+    if (enemy.name === _threatBroadcast.lastMob && now - _threatBroadcast.lastSent < cooldownMs) return;
+    _threatBroadcast.lastSent = now;
+    _threatBroadcast.lastMob = enemy.name;
+    try {
+        serverProxy.teamBroadcast({
+            type: 'threat',
+            mob: enemy.name,
+            position: { x: enemy.position.x, y: enemy.position.y, z: enemy.position.z }
+        });
+    } catch (err) { /* socket may not be ready during early init */ }
+}
 
 async function say(agent, message) {
     agent.bot.modes.behavior_log += message + '\n';
@@ -147,6 +165,7 @@ const modes_list = [
             const enemy = world.getNearestEntityWhere(agent.bot, entity => mc.isHostile(entity), 16);
             if (enemy && await world.isClearPath(agent.bot, enemy)) {
                 say(agent, `Aaa! A ${enemy.name.replace("_", " ")}!`);
+                maybeBroadcastThreat(enemy);
                 execute(this, agent, async () => {
                     await skills.avoidEnemies(agent.bot, 24);
                 });
@@ -163,6 +182,7 @@ const modes_list = [
             const enemy = world.getNearestEntityWhere(agent.bot, entity => mc.isHostile(entity), 8);
             if (enemy && await world.isClearPath(agent.bot, enemy)) {
                 say(agent, `Fighting ${enemy.name}!`);
+                maybeBroadcastThreat(enemy);
                 execute(this, agent, async () => {
                     await skills.defendSelf(agent.bot, 8);
                 });

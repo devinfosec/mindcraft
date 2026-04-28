@@ -17,6 +17,10 @@ let server;
 const agent_connections = {};
 const agent_listeners = [];
 
+// Shared team store: cooperative state visible to all agents (waypoints, designated chest, etc).
+// Keyed by string (e.g. 'waypoint:diamond_cave', 'chest'). Values are JSON-serializable.
+const team_store = {};
+
 const settings_spec = JSON.parse(readFileSync(path.join(__dirname, 'public/settings_spec.json'), 'utf8'));
 
 class AgentConnection {
@@ -273,6 +277,38 @@ export function createMindServer(host_public = false, port = 8080) {
 
         socket.on('listen-to-agents', () => {
             addListener(socket);
+        });
+
+        // Set / get / list / delete entries in the shared team store.
+        socket.on('team-store-set', (key, value, callback) => {
+            if (typeof key !== 'string' || !key) {
+                if (callback) callback({ success: false, error: 'Invalid key' });
+                return;
+            }
+            team_store[key] = value;
+            if (callback) callback({ success: true });
+        });
+        socket.on('team-store-get', (key, callback) => {
+            callback({ value: team_store[key] ?? null });
+        });
+        socket.on('team-store-keys', (prefix, callback) => {
+            const keys = Object.keys(team_store).filter(k => !prefix || k.startsWith(prefix));
+            callback({ keys });
+        });
+        socket.on('team-store-delete', (key, callback) => {
+            const existed = key in team_store;
+            delete team_store[key];
+            if (callback) callback({ success: existed });
+        });
+
+        // Broadcast a structured event to every other in-game agent (e.g. threat alerts).
+        socket.on('team-broadcast', (payload) => {
+            for (const [name, conn] of Object.entries(agent_connections)) {
+                if (name === curAgentName) continue;
+                if (conn.in_game && conn.socket) {
+                    conn.socket.emit('team-broadcast', curAgentName, payload);
+                }
+            }
         });
     });
 

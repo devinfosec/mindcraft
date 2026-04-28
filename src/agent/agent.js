@@ -428,6 +428,19 @@ export class Agent {
         }
     }
 
+    handleTeamBroadcast(fromAgent, payload) {
+        // Receive a structured event from another bot via the mindserver team channel.
+        if (!payload || typeof payload !== 'object') return;
+        if (payload.type === 'threat') {
+            const { mob, position } = payload;
+            const posStr = position ? ` at ${Math.round(position.x)},${Math.round(position.y)},${Math.round(position.z)}` : '';
+            this.handleMessage('system', `(TEAM ALERT from ${fromAgent}) Hostile ${mob}${posStr}.`);
+        }
+        else if (payload.type === 'note') {
+            this.handleMessage('system', `(TEAM from ${fromAgent}) ${payload.text}`);
+        }
+    }
+
     startEvents() {
         // Custom events
         this.bot.on('time', () => {
