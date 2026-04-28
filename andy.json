@@ -1,6 +1,9 @@
 {
     "name": "andy",
 
-    "model": "gpt-5.4-mini"
-
+    "model": {
+        "api": "vllm",
+        "url": "http://127.0.0.1:13305/v1",
+        "model": "user.Qwen3.6-35B-A3B-GGUF"
+    }
 }
