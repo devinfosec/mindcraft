@@ -173,6 +173,29 @@ const modes_list = [
         }
     },
     {
+        name: 'player_defense',
+        description: 'Immediately retaliate when hit by a nearby player. Interrupts all actions.',
+        interrupts: ['all'],
+        on: true,
+        active: false,
+        update: async function (agent) {
+            const bot = agent.bot;
+            if (Date.now() - (bot.lastDamageTime || 0) > 1500) return; // only within 1.5s of being hit
+            const attacker = world.getNearestEntityWhere(bot, e => e.type === 'player' && e !== bot.entity, 8);
+            if (!attacker || !await world.isClearPath(bot, attacker)) return;
+            execute(this, agent, async () => {
+                say(agent, `You hit me? BIG mistake.`);
+                await skills.equipHighestAttack(bot);
+                bot.pvp.attack(attacker);
+                while (attacker.isValid && bot.players[attacker.username]) {
+                    await new Promise(r => setTimeout(r, 500));
+                    if (bot.interrupt_code) { bot.pvp.stop(); return; }
+                }
+                bot.pvp.stop();
+            });
+        }
+    },
+    {
         name: 'self_defense',
         description: 'Attack nearby enemies. Interrupts all actions.',
         interrupts: ['all'],
@@ -323,7 +346,16 @@ const modes_list = [
     }
 ];
 
+// Modes that may fire even while the LLM is generating a response.
+const CRITICAL_MODES = new Set(['self_preservation', 'player_defense', 'self_defense']);
+
 async function execute(mode, agent, func, timeout=-1) {
+    // While the LLM is thinking, don't let non-critical modes interrupt a
+    // running resume action (e.g. !attackPlayer) — let background tasks drain.
+    if (agent.generating && agent.actions.resume_func && !CRITICAL_MODES.has(mode.name)) {
+        return;
+    }
+
     if (agent.self_prompter.isActive())
         agent.self_prompter.stopLoop();
     let interrupted_action = agent.actions.currentActionLabel;
