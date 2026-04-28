@@ -26,6 +26,9 @@ export class Agent {
 
         // Initialize components
         this.actions = new ActionManager(this);
+        this._msgQueue = [];
+        this._processingMsg = false;
+        this.generating = false;
         this.prompter = new Prompter(this, settings.profile);
         this.name = (this.prompter.getName() || '').trim();
         console.log(`Initializing agent ${this.name}...`);
@@ -170,7 +173,7 @@ export class Agent {
                 }
                 else {
                     let translation = await handleEnglishTranslation(message);
-                    this.handleMessage(username, translation);
+                    this.queueMessage(username, translation);
                 }
             } catch (error) {
                 console.error('Error handling message:', error);
@@ -249,6 +252,21 @@ export class Agent {
             this.self_prompter.stop(false);
         }
         convoManager.endAllConversations();
+    }
+
+    queueMessage(source, message, max_responses=null) {
+        this._msgQueue.push({ source, message, max_responses });
+        this._drainQueue();
+    }
+
+    async _drainQueue() {
+        if (this._processingMsg) return;
+        this._processingMsg = true;
+        while (this._msgQueue.length > 0) {
+            const { source, message, max_responses } = this._msgQueue.shift();
+            await this.handleMessage(source, message, max_responses);
+        }
+        this._processingMsg = false;
     }
 
     async handleMessage(source, message, max_responses=null) {

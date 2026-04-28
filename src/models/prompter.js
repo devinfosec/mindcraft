@@ -229,7 +229,9 @@ export class Prompter {
     async promptConvo(messages) {
         this.most_recent_msg_time = Date.now();
         let current_msg_time = this.most_recent_msg_time;
+        this.agent.generating = true;
 
+        try {
         for (let i = 0; i < 3; i++) { // try 3 times to avoid hallucinations
             await this.checkCooldown();
             if (current_msg_time !== this.most_recent_msg_time) {
@@ -274,6 +276,9 @@ export class Prompter {
         }
 
         return '';
+        } finally {
+            this.agent.generating = false;
+        }
     }
 
     async promptCoding(messages) {
