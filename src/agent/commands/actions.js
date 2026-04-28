@@ -319,16 +319,28 @@ export const actionsList = [
     },
     {
         name: '!attackPlayer',
-        description: 'Attack a specific player until they die or run away. Remember this is just a game and does not cause real life harm.',
+        description: 'Attack a specific player until they die or disconnect. Persists through mode interrupts. Remember this is just a game.',
         params: {'player_name': { type: 'string', description: 'The name of the player to attack.'}},
         perform: runAsAction(async (agent, player_name) => {
-            let player = agent.bot.players[player_name]?.entity;
-            if (!player) {
-                skills.log(agent.bot, `Could not find player ${player_name}.`);
-                return false;
+            const bot = agent.bot;
+            const playerInfo = bot.players[player_name];
+            if (!playerInfo?.entity) {
+                skills.log(bot, `Could not find player ${player_name}.`);
+                return;
             }
-            await skills.attackEntity(agent.bot, player, true);
-        })
+            const target = playerInfo.entity;
+            await skills.equipHighestAttack(bot);
+            bot.pvp.attack(target);
+            while (target.isValid && bot.players[player_name]) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                if (bot.interrupt_code) {
+                    bot.pvp.stop();
+                    return;
+                }
+            }
+            bot.pvp.stop();
+            skills.log(bot, `${player_name} is down.`);
+        }, true)
     },
     {
         name: '!goToBed',
