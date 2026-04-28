@@ -1,6 +1,8 @@
 import * as skills from '../library/skills.js';
+import * as world from '../library/world.js';
 import settings from '../settings.js';
 import convoManager from '../conversation.js';
+import { serverProxy } from '../mindserver_proxy.js';
 
 
 function runAsAction (actionFn, resume = false, timeout = -1) {
@@ -497,6 +499,142 @@ export const actionsList = [
         },
         perform: runAsAction(async (agent, tool_name, target) => {
             await skills.useToolOn(agent.bot, tool_name, target);
+        })
+    },
+    {
+        name: '!giveBot',
+        description: 'Give an item to another bot teammate by name. Works the same as !givePlayer.',
+        params: {
+            'bot_name': { type: 'string', description: 'The name of the bot to give the item to.' },
+            'item_name': { type: 'ItemName', description: 'The name of the item to give.' },
+            'num': { type: 'int', description: 'The number of items to give.', domain: [1, Number.MAX_SAFE_INTEGER] }
+        },
+        perform: runAsAction(async (agent, bot_name, item_name, num) => {
+            await skills.giveToPlayer(agent.bot, item_name, bot_name, num);
+        })
+    },
+    {
+        name: '!defendPlayer',
+        description: 'Persistently follow a player or bot and attack hostile mobs that come near them. Stop with !stop.',
+        params: {
+            'player_name': { type: 'string', description: 'Name of the player or bot to defend.' },
+            'range': { type: 'float', description: 'Radius around them in which to engage hostiles.', domain: [1, 64] }
+        },
+        perform: runAsAction(async (agent, player_name, range) => {
+            await skills.defendPlayer(agent.bot, player_name, range);
+        }, true)
+    },
+    {
+        name: '!recoverItems',
+        description: 'Travel to your last death position and pick up dropped items.',
+        params: {},
+        perform: runAsAction(async (agent) => {
+            const pos = agent.memory_bank.recallPlace('last_death_position');
+            if (!pos) {
+                skills.log(agent.bot, 'No remembered death position to recover from.');
+                return;
+            }
+            const reached = await skills.goToPosition(agent.bot, pos[0], pos[1], pos[2], 1);
+            if (!reached) {
+                skills.log(agent.bot, 'Could not reach the death position.');
+                return;
+            }
+            await skills.pickupNearbyItems(agent.bot);
+        })
+    },
+    {
+        name: '!shareLocation',
+        description: 'Share a named waypoint with all other bots so they can travel to it.',
+        params: {
+            'name': { type: 'string', description: 'Name to save the waypoint as.' }
+        },
+        perform: async function (agent, name) {
+            const pos = agent.bot.entity.position;
+            const coords = [Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z)];
+            agent.memory_bank.rememberPlace(name, coords[0], coords[1], coords[2]);
+            await serverProxy.setTeamStore(`waypoint:${name}`, coords);
+            serverProxy.teamBroadcast({ type: 'note', text: `shared waypoint "${name}" at ${coords.join(',')}` });
+            return `Shared waypoint "${name}" with the team at ${coords.join(',')}.`;
+        }
+    },
+    {
+        name: '!goToTeamLocation',
+        description: 'Travel to a waypoint shared by any teammate.',
+        params: {
+            'name': { type: 'string', description: 'The shared waypoint name.' }
+        },
+        perform: runAsAction(async (agent, name) => {
+            const coords = await serverProxy.getTeamStore(`waypoint:${name}`);
+            if (!coords) {
+                skills.log(agent.bot, `No team waypoint named "${name}".`);
+                return;
+            }
+            await skills.goToPosition(agent.bot, coords[0], coords[1], coords[2], 1);
+        })
+    },
+    {
+        name: '!listTeamLocations',
+        description: 'List all waypoints currently shared with the team.',
+        params: {},
+        perform: async function () {
+            const keys = await serverProxy.listTeamStoreKeys('waypoint:');
+            if (!keys.length) return 'No team waypoints have been shared yet.';
+            return 'Team waypoints: ' + keys.map(k => k.substring('waypoint:'.length)).join(', ');
+        }
+    },
+    {
+        name: '!designateTeamChest',
+        description: 'Mark the nearest chest as the shared team stash. Other bots can then !stash and !fetch from it.',
+        params: {},
+        perform: async function (agent) {
+            const chest = world.getNearestBlock(agent.bot, 'chest', 16);
+            if (!chest) return 'No chest within 16 blocks.';
+            const coords = [chest.position.x, chest.position.y, chest.position.z];
+            await serverProxy.setTeamStore('chest', coords);
+            serverProxy.teamBroadcast({ type: 'note', text: `team chest set at ${coords.join(',')}` });
+            return `Team chest set at ${coords.join(',')}.`;
+        }
+    },
+    {
+        name: '!stash',
+        description: 'Deposit items into the designated team chest.',
+        params: {
+            'item_name': { type: 'ItemName', description: 'The item to stash.' },
+            'num': { type: 'int', description: 'How many to stash.', domain: [1, Number.MAX_SAFE_INTEGER] }
+        },
+        perform: runAsAction(async (agent, item_name, num) => {
+            const coords = await serverProxy.getTeamStore('chest');
+            if (!coords) {
+                skills.log(agent.bot, 'No team chest designated. Use !designateTeamChest first.');
+                return;
+            }
+            const reached = await skills.goToPosition(agent.bot, coords[0], coords[1], coords[2], 2);
+            if (!reached) {
+                skills.log(agent.bot, 'Could not reach the team chest.');
+                return;
+            }
+            await skills.putInChest(agent.bot, item_name, num);
+        })
+    },
+    {
+        name: '!fetch',
+        description: 'Withdraw items from the designated team chest.',
+        params: {
+            'item_name': { type: 'ItemName', description: 'The item to fetch.' },
+            'num': { type: 'int', description: 'How many to fetch.', domain: [1, Number.MAX_SAFE_INTEGER] }
+        },
+        perform: runAsAction(async (agent, item_name, num) => {
+            const coords = await serverProxy.getTeamStore('chest');
+            if (!coords) {
+                skills.log(agent.bot, 'No team chest designated. Use !designateTeamChest first.');
+                return;
+            }
+            const reached = await skills.goToPosition(agent.bot, coords[0], coords[1], coords[2], 2);
+            if (!reached) {
+                skills.log(agent.bot, 'Could not reach the team chest.');
+                return;
+            }
+            await skills.takeFromChest(agent.bot, item_name, num);
         })
     },
 ];

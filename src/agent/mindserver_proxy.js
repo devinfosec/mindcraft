@@ -79,6 +79,12 @@ class MindServerProxy {
             }
         });
 
+        this.socket.on('team-broadcast', (fromAgent, payload) => {
+            if (this.agent?.handleTeamBroadcast) {
+                this.agent.handleTeamBroadcast(fromAgent, payload);
+            }
+        });
+
         // Request settings and wait for response
         await new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -119,6 +125,34 @@ class MindServerProxy {
 
     getSocket() {
         return this.socket;
+    }
+
+    setTeamStore(key, value) {
+        return new Promise((resolve) => {
+            this.socket.emit('team-store-set', key, value, (resp) => resolve(resp));
+        });
+    }
+
+    getTeamStore(key) {
+        return new Promise((resolve) => {
+            this.socket.emit('team-store-get', key, (resp) => resolve(resp?.value ?? null));
+        });
+    }
+
+    listTeamStoreKeys(prefix = '') {
+        return new Promise((resolve) => {
+            this.socket.emit('team-store-keys', prefix, (resp) => resolve(resp?.keys ?? []));
+        });
+    }
+
+    deleteTeamStore(key) {
+        return new Promise((resolve) => {
+            this.socket.emit('team-store-delete', key, (resp) => resolve(resp?.success ?? false));
+        });
+    }
+
+    teamBroadcast(payload) {
+        this.socket.emit('team-broadcast', payload);
     }
 }
 

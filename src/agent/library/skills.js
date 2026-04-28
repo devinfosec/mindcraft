@@ -1394,6 +1394,84 @@ export async function followPlayer(bot, username, distance=4) {
 }
 
 
+export async function defendPlayer(bot, username, range=12) {
+    /**
+     * Persistently follow the given player and attack any hostile mobs that come near them.
+     * Will not return until the code is manually stopped.
+     * @param {MinecraftBot} bot, reference to the minecraft bot.
+     * @param {string} username, the username of the player or bot to defend.
+     * @param {number} range, the range around the protectee to scan for hostiles. Defaults to 12.
+     * @returns {Promise<boolean>} true if the protectee was found, false otherwise.
+     **/
+    let player = bot.players[username]?.entity;
+    if (!player) {
+        log(bot, `Could not find ${username} to defend.`);
+        return false;
+    }
+
+    const move = new pf.Movements(bot);
+    move.digCost = 10;
+    bot.pathfinder.setMovements(move);
+    bot.pathfinder.setGoal(new pf.goals.GoalFollow(player, 3), true);
+    log(bot, `Defending ${username} from hostiles within ${range} blocks.`);
+
+    while (!bot.interrupt_code) {
+        await new Promise(resolve => setTimeout(resolve, 400));
+
+        // Refresh entity reference; the player may have left and rejoined.
+        player = bot.players[username]?.entity;
+        if (!player) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+        }
+
+        // Find a hostile within range of the protectee, not just the bot.
+        let nearestHostile = null;
+        let nearestDist = Infinity;
+        for (const id in bot.entities) {
+            const e = bot.entities[id];
+            if (!mc.isHostile(e)) continue;
+            const d = e.position.distanceTo(player.position);
+            if (d < range && d < nearestDist) {
+                nearestHostile = e;
+                nearestDist = d;
+            }
+        }
+
+        if (nearestHostile) {
+            // Pause modes that would otherwise pull us off the engagement.
+            bot.modes.pause('cowardice');
+            bot.modes.pause('hunting');
+            bot.modes.pause('item_collecting');
+            try {
+                await equipHighestAttack(bot);
+                if (bot.entity.position.distanceTo(nearestHostile.position) > 3 && nearestHostile.name !== 'creeper') {
+                    try {
+                        await bot.pathfinder.goto(new pf.goals.GoalFollow(nearestHostile, 2), true);
+                    } catch (err) { /* ignore */ }
+                }
+                bot.pvp.attack(nearestHostile);
+            } catch (err) {
+                log(bot, `Defense engagement error: ${err.message}`);
+            }
+            // Give pvp a moment to swing before re-evaluating.
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        else {
+            // No threats — resume the follow goal in case pvp scrubbed it.
+            if (!bot.pathfinder.goal) {
+                bot.pathfinder.setGoal(new pf.goals.GoalFollow(player, 3), true);
+            }
+            bot.modes.unpause('cowardice');
+            bot.modes.unpause('hunting');
+            bot.modes.unpause('item_collecting');
+        }
+    }
+    bot.pvp.stop();
+    return true;
+}
+
+
 export async function moveAway(bot, distance) {
     /**
      * Move away from current position in any direction.
