@@ -49,7 +49,11 @@ export class Prompter {
             const override = JSON.parse(readFileSync(override_fp, 'utf8'));
             for (let key in override)
                 this.profile[key] = override[key];
-            console.log(`Loaded hardcoded override for agent '${profile.name}' (keys: ${Object.keys(override).join(', ')})`);
+            console.log(`\n=== Loaded hardcoded override for agent '${profile.name}' ===`);
+            console.log(`Override keys: ${Object.keys(override).join(', ')}`);
+            if (override.conversing) {
+                console.log(`--- conversing system prompt ---\n${override.conversing}\n--- end conversing ---\n`);
+            }
         } catch (err) {
             if (err.code !== 'ENOENT') console.error(`Failed to load profile override for '${profile.name}':`, err.message);
         }
