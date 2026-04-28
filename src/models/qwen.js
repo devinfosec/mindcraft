@@ -10,15 +10,18 @@ export class Qwen {
         let config = {};
 
         config.baseURL = url || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-        config.apiKey = getKey('QWEN_API_KEY');
+        // Local OpenAI-compatible servers (vLLM, llama.cpp, Ollama's /v1, LM Studio)
+        // don't need a real key, but the OpenAI client requires a non-empty value.
+        config.apiKey = hasKey('QWEN_API_KEY') ? getKey('QWEN_API_KEY') : 'local';
 
         this.openai = new OpenAIApi(config);
     }
 
     async sendRequest(turns, systemMessage, stop_seq='***') {
-        let messages = [{'role': 'system', 'content': systemMessage}].concat(turns);
-
-        messages = strictFormat(messages);
+        // Run strictFormat on the user/assistant turns only, then prepend the system
+        // message. Folding the system message into strictFormat would rewrite it as a
+        // user turn prefixed with "SYSTEM:", which smaller models follow poorly.
+        let messages = [{ role: 'system', content: systemMessage }].concat(strictFormat(turns));
 
         const pack = {
             model: this.model_name || "qwen-plus",
@@ -36,6 +39,11 @@ export class Qwen {
                 throw new Error('Context length exceeded');
             console.log('Received.');
             res = completion.choices[0].message.content;
+            // Strip Qwen3-style reasoning blocks so they don't reach the command parser.
+            if (res && res.includes('</think>')) {
+                if (!res.includes('<think>')) res = '<think>' + res;
+                res = res.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+            }
         }
         catch (err) {
             if ((err.message == 'Context length exceeded' || err.code == 'context_length_exceeded') && turns.length > 1) {
