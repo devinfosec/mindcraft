@@ -66,19 +66,18 @@ export class AgentProcess {
     forceRestart() {
         if (this.running && this.process && !this.process.killed) {
             console.log(`Agent process for ${this.name} is still running. Attempting to force restart.`);
-            
-            const restartTimeout = setTimeout(() => {
-                console.warn(`Agent ${this.name} did not stop in time. It might be stuck.`);
-            }, 5000); // 5 seconds to exit
 
-            this.process.once('exit', () => {
-                 clearTimeout(restartTimeout);
-                 console.log(`Stopped hanging agent ${this.name}. Now restarting.`);
-                 this.start(true, 'Agent process restarted.', this.count_id);
-            });
+            // If graceful SIGINT doesn't work within 5s, SIGKILL to unblock a stuck/OOM process.
+            const killTimeout = setTimeout(() => {
+                console.warn(`Agent ${this.name} did not stop in time. Force killing.`);
+                this.process.kill('SIGKILL');
+            }, 5000);
+
+            // Only clear the timeout here — restart is handled by start()'s exit handler.
+            this.process.once('exit', () => clearTimeout(killTimeout));
             this.stop(); // sends SIGINT
         } else {
-             this.start(true, 'Agent process restarted.', this.count_id);
+            this.start(true, 'Agent process restarted.', this.count_id);
         }
     }
 }
