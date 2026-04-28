@@ -21,7 +21,7 @@ async function autoLight(bot) {
     return false;
 }
 
-async function equipHighestAttack(bot) {
+export async function equipHighestAttack(bot) {
     let weapons = bot.inventory.items().filter(item => item.name.includes('sword') || (item.name.includes('axe') && !item.name.includes('pickaxe')));
     if (weapons.length === 0)
         weapons = bot.inventory.items().filter(item => item.name.includes('pickaxe') || item.name.includes('shovel'));
@@ -354,13 +354,14 @@ export async function attackEntity(bot, entity, kill=true) {
     }
     else {
         bot.pvp.attack(entity);
-        while (world.getNearbyEntities(bot, 24).includes(entity)) {
+        while (entity.isValid) {
             await new Promise(resolve => setTimeout(resolve, 1000));
             if (bot.interrupt_code) {
                 bot.pvp.stop();
                 return false;
             }
         }
+        bot.pvp.stop();
         log(bot, `Successfully killed ${entity.name}.`);
         await pickupNearbyItems(bot);
         return true;
