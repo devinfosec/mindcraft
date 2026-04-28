@@ -1,3 +1,5 @@
+import assert from 'node:assert';
+
 export class ActionManager {
     constructor(agent) {
         this.agent = agent;
@@ -12,7 +14,7 @@ export class ActionManager {
     }
 
     async resumeAction(actionFn, timeout) {
-        return this._executeResume(actionFn, timeout);
+        return this._executeResume(null, actionFn, timeout);
     }
 
     async runAction(actionLabel, actionFn, { timeout, resume = false } = {}) {
@@ -133,12 +135,13 @@ export class ActionManager {
             // Log the full stack trace
             console.error(err.stack);
             await this.stop();
+            const stack = err.stack;
             err = err.toString();
 
             let message = this.getBotOutputSummary() +
                 '!!Code threw exception!!\n' +
                 'Error: ' + err + '\n' +
-                'Stack trace:\n' + err.stack+'\n';
+                'Stack trace:\n' + stack + '\n';
 
             let interrupted = this.agent.bot.interrupt_code;
             this.agent.clearBotLogs();
