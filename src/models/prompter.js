@@ -49,7 +49,10 @@ export class Prompter {
             const override = JSON.parse(readFileSync(override_fp, 'utf8'));
             for (let key in override)
                 this.profile[key] = override[key];
-        } catch (_) { /* no override file for this agent — that's fine */ }
+            console.log(`Loaded hardcoded override for agent '${profile.name}' (keys: ${Object.keys(override).join(', ')})`);
+        } catch (err) {
+            if (err.code !== 'ENOENT') console.error(`Failed to load profile override for '${profile.name}':`, err.message);
+        }
 
         this.convo_examples = null;
         this.coding_examples = null;
