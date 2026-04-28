@@ -43,6 +43,14 @@ export class Prompter {
         }
         // base overrides default, individual overrides base
 
+        // apply name-keyed repo override last — wins over everything the caller supplies
+        const override_fp = path.join(__dirname, '../../profiles/overrides', `${profile.name}.json`);
+        try {
+            const override = JSON.parse(readFileSync(override_fp, 'utf8'));
+            for (let key in override)
+                this.profile[key] = override[key];
+        } catch (_) { /* no override file for this agent — that's fine */ }
+
         this.convo_examples = null;
         this.coding_examples = null;
         
